@@ -1,394 +1,297 @@
-# LMS Backend API
+# LMS API — student guide
 
-A RESTful API for the Learning Management System built with Express.js, TypeScript, Drizzle ORM, and PostgreSQL.
+This repository is the **backend** of a Learning Management System (LMS).
 
----
+Think of a website like a small online school:
 
-## Tech Stack
+- The **frontend** (usually on port `3000`) is the screens students see: login, course list, videos.
+- This **backend** (usually on port `5000`) is the kitchen. It stores users, courses, and progress in a database, and answers questions from the frontend.
 
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| Express.js | 4.21.2 | HTTP server framework |
-| TypeScript | 5.7.3 | Type safety |
-| Drizzle ORM | 0.39.3 | Database ORM |
-| PostgreSQL | - | Relational database |
-| JSON Web Token | 9.0.2 | Authentication |
-| bcrypt | 5.1.1 | Password hashing |
-| Zod | 3.24.2 | Request validation |
-| multer | 1.4.5 | File uploads |
-| pg | 8.13.1 | PostgreSQL client |
+The frontend never talks to PostgreSQL directly. It sends HTTP requests here, for example:
 
----
+- “Register this new student”
+- “Give me all published courses”
+- “Mark this lesson as complete”
 
-## Features
+This project is an **Express.js API** written in **TypeScript**.
 
-- JWT-based authentication (register, login, token verification)
-- Role-based access control (student / admin)
-- Full CRUD for courses, sessions, categories
-- Student enrollment system
-- Session progress tracking
-- Profile management with password change
-- Admin dashboard with statistics
-- CORS configured for frontend origin
+```
+Browser / frontend (port 3000)
+        |
+        |  HTTP requests  (/api/...)
+        v
+This API (port 5000)
+        |
+        |  SQL
+        v
+PostgreSQL database
+```
 
 ---
 
-## Project Structure
+## What you will learn from this repo
+
+- How a real REST API is split into routes, controllers, and a database schema
+- How login works with JWT tokens
+- How Docker packages this API so it runs the same on every laptop
+- How a backend container talks to a frontend container
+
+Docker learning files (read in this order):
+
+1. [dockerignore-guide.md](./dockerignore-guide.md) — which files Docker should **not** copy
+2. [dockerfile-demo.md](./dockerfile-demo.md) — what a Dockerfile is, how to write one, build an image, run a container, connect to the frontend
+3. [multi-stage-build.md](./multi-stage-build.md) — why this Dockerfile has two stages (builder + production)
+
+---
+
+## What this API can do
+
+| Feature | Simple meaning |
+|---------|----------------|
+| Register / login | Students create an account and get a token |
+| Roles | `student` or `admin` — admins can create courses |
+| Courses & categories | Catalogue of classes |
+| Sessions | Lessons inside a course (video or PDF links) |
+| Enrollment | A student joins a course |
+| Progress | Track which lessons a student finished |
+| Profile | Update name / password |
+| Admin dashboard | Counts of users, courses, enrollments |
+| Health check | `GET /health` — used by Docker to see if the process is alive |
+
+---
+
+## Tech stack (plain English)
+
+| Tool | What it is in this project |
+|------|----------------------------|
+| **Node.js 20** | The JavaScript runtime that runs the server |
+| **Express** | Library that handles HTTP routes (`/api/courses`, …) |
+| **TypeScript** | JavaScript with types. We compile it to `dist/` before production |
+| **PostgreSQL** | Database that stores users, courses, and progress |
+| **Drizzle ORM** | TypeScript code that talks to PostgreSQL |
+| **JWT** | Signed token given after login. The frontend sends it as `Authorization: Bearer ...` |
+| **bcrypt** | Hashes passwords so we never store the real password |
+| **Zod** | Validates request data |
+| **CORS** | Allows the frontend origin (default `http://localhost:3000`) to call this API |
+
+---
+
+## Folders (only what you need)
 
 ```
 lms-api/
 ├── src/
-│   ├── config/              # App configuration
-│   ├── controllers/         # Route handlers
-│   │   ├── auth.controller.ts
-│   │   ├── admin.controller.ts
-│   │   ├── course.controller.ts
-│   │   ├── session.controller.ts
-│   │   ├── enrollment.controller.ts
-│   │   ├── category.controller.ts
-│   │   ├── profile.controller.ts
-│   │   └── progress.controller.ts
+│   ├── index.ts              # Starts Express, CORS, /api, /health
+│   ├── config/               # PORT, JWT, DATABASE_URL, CORS_ORIGIN
+│   ├── routes/               # URL map (GET /api/courses → controller)
+│   ├── controllers/          # The actual work (query DB, send JSON)
+│   ├── middleware/           # Check JWT, check admin role, handle errors
 │   ├── db/
-│   │   ├── schema/
-│   │   │   └── index.ts     # Drizzle schema definitions
-│   │   └── index.ts         # Database connection
-│   ├── middleware/           # Auth & error middleware
-│   ├── routes/              # API route definitions
-│   │   ├── auth.routes.ts
-│   │   ├── admin.routes.ts
-│   │   ├── course.routes.ts
-│   │   ├── session.routes.ts
-│   │   ├── enrollment.routes.ts
-│   │   ├── category.routes.ts
-│   │   ├── profile.routes.ts
-│   │   ├── progress.routes.ts
-│   │   └── index.ts
-│   ├── types/               # Shared types
-│   └── index.ts             # Express server entry point
-├── drizzle/                 # Generated migrations
-├── package.json
-├── tsconfig.json
-└── drizzle.config.ts
+│   │   ├── schema/           # Table definitions (users, courses, ...)
+│   │   └── index.ts          # PostgreSQL connection
+│   └── types/                # Shared TypeScript types
+├── Dockerfile                # Recipe to build a Docker image
+├── .dockerignore             # Files Docker must not send during build
+├── package.json              # Scripts and npm packages
+└── tsconfig.json             # TypeScript compiler settings
 ```
+
+**How a request flows**
+
+1. Frontend calls `POST /api/auth/login`
+2. `src/index.ts` sends `/api` traffic to `src/routes`
+3. `auth.routes.ts` picks the login handler
+4. `auth.controller.ts` checks the password and returns a JWT
+5. JSON goes back to the frontend
 
 ---
 
 ## Prerequisites
 
-- **Node.js** — v18 or higher (v20 recommended)
-- **npm** — v9 or higher
-- **PostgreSQL** — v14 or higher
+- **Node.js** 18+ (20 is best — same as the Dockerfile)
+- **npm**
+- **PostgreSQL** 14+ (or a Postgres Docker container)
+- **Docker Desktop** if you want to follow the Docker lessons
 
 ---
 
-## Local Development Setup
+## Run on your laptop (without Docker)
 
-### 1. Clone the Repository
-
-```bash
-git clone <your-repo-url>
-cd lms/lms-api
-```
-
-### 2. Install Dependencies
+### 1. Install packages
 
 ```bash
 npm install
 ```
 
-### 3. Create Environment File
-
-Create `.env` in the `lms-api/` directory:
+### 2. Create `.env` in this folder
 
 ```env
 DATABASE_URL=postgresql://postgres:your_password@localhost:5432/lms_db
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+JWT_SECRET=replace-this-with-a-long-random-string
 JWT_EXPIRES_IN=7d
 PORT=5000
 CORS_ORIGIN=http://localhost:3000
 ```
 
-### 4. Setup Database
+Never commit `.env`. It holds secrets.
 
-Create the PostgreSQL database:
+### 3. Create the database
+
+In PostgreSQL:
 
 ```sql
 CREATE DATABASE lms_db;
 ```
 
-Push the schema to the database:
+Create tables from the Drizzle schema:
 
 ```bash
 npm run db:push
 ```
 
-Optional — Open Drizzle Studio to inspect data:
-
-```bash
-npm run db:studio
-```
-
-### 5. Start Development Server
+### 4. Start the API
 
 ```bash
 npm run dev
 ```
 
-Server runs on `http://localhost:5000`
+Open: [http://localhost:5000/health](http://localhost:5000/health)
+
+You should see `"status": "ok"`.
 
 ---
 
-## Environment Variables
+## Run with Docker
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:password@localhost:5432/lms_db` |
-| `JWT_SECRET` | Secret key for JWT signing | Any random secure string |
-| `JWT_EXPIRES_IN` | Token expiration duration | `7d` |
-| `PORT` | Server port | `5000` |
-| `CORS_ORIGIN` | Allowed origin for CORS | `http://localhost:3000` |
+Full steps (write a Dockerfile, build, run, connect to a frontend on port 3000) are in [dockerfile-demo.md](./dockerfile-demo.md).
 
----
+Short version after the image exists:
 
-## Database Schema
+```bash
+docker build -t lms-api .
+docker run -d --name lms-api -p 5000:5000 --env-file .env lms-api
+```
 
-### Tables
-
-| Table | Description |
-|-------|-------------|
-| `users` | User accounts (id, name, email, password, role, avatar) |
-| `categories` | Course categories (id, name, slug) |
-| `courses` | Course details (id, title, slug, description, thumbnail, level, duration, instructor, published) |
-| `sessions` | Video/PDF sessions (id, title, description, videoUrl, pdfUrl, order, published, courseId) |
-| `enrollments` | Student-course enrollment records (userId, courseId) |
-| `session_progress` | Tracks completed sessions per user (userId, sessionId, completed) |
+If Postgres is also in Docker, `localhost` inside the API container is **not** your laptop. Use the database **container name** in `DATABASE_URL`. The Docker demo file explains this.
 
 ---
 
-## API Endpoints
+## Environment variables
 
-### Authentication
+| Variable | Meaning | Typical student value |
+|----------|---------|------------------------|
+| `DATABASE_URL` | How to reach PostgreSQL | `postgresql://postgres:password@localhost:5432/lms_db` |
+| `JWT_SECRET` | Secret used to sign login tokens | any long random string |
+| `JWT_EXPIRES_IN` | How long a token stays valid | `7d` |
+| `PORT` | Port inside the process | `5000` |
+| `CORS_ORIGIN` | Which frontend URL is allowed | `http://localhost:3000` |
+
+`CORS_ORIGIN` must match what the **browser** shows in the address bar, not a Docker internal hostname.
+
+---
+
+## Database tables
+
+| Table | Stores |
+|-------|--------|
+| `users` | Accounts (name, email, hashed password, role, avatar) |
+| `categories` | Course groups |
+| `courses` | Course title, description, level, instructor, published flag |
+| `sessions` | Lessons belonging to a course |
+| `enrollments` | Which student joined which course |
+| `session_progress` | Which lessons a student completed |
+
+---
+
+## API endpoints
+
+Base URL: `http://localhost:5000`
+
+Admin routes need a JWT **and** `role = admin`.
+
+### Auth
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/auth/register` | Register new user |
-| POST | `/api/auth/login` | Login user |
-| GET | `/api/auth/me` | Get current user |
+| POST | `/api/auth/register` | Create account |
+| POST | `/api/auth/login` | Login, receive JWT |
+| GET | `/api/auth/me` | Current user (needs token) |
 
 ### Courses
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/courses` | Get all published courses (with pagination) |
-| GET | `/api/courses/admin/all` | Get all courses (admin) |
-| GET | `/api/courses/featured` | Get featured courses |
-| GET | `/api/courses/slug/:slug` | Get course by slug |
-| GET | `/api/courses/:id` | Get course by ID |
-| POST | `/api/courses` | Create course (admin) |
-| PUT | `/api/courses/:id` | Update course (admin) |
-| DELETE | `/api/courses/:id` | Delete course (admin) |
+| GET | `/api/courses` | Published courses |
+| GET | `/api/courses/admin/all` | All courses (admin) |
+| GET | `/api/courses/featured` | Featured courses |
+| GET | `/api/courses/slug/:slug` | One course by slug |
+| GET | `/api/courses/:id` | One course by id |
+| POST | `/api/courses` | Create (admin) |
+| PUT | `/api/courses/:id` | Update (admin) |
+| DELETE | `/api/courses/:id` | Delete (admin) |
 
-### Sessions
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/sessions/course/:courseId` | Get sessions for a course |
-| GET | `/api/sessions/:id` | Get session by ID |
-| POST | `/api/sessions` | Create session (admin) |
-| PUT | `/api/sessions/:id` | Update session (admin) |
-| DELETE | `/api/sessions/:id` | Delete session (admin) |
-
-### Enrollments
+### Sessions, enrollments, progress
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/sessions/course/:courseId` | Lessons in a course |
+| GET | `/api/sessions/:id` | One lesson |
+| POST | `/api/sessions` | Create lesson (admin) |
+| PUT | `/api/sessions/:id` | Update lesson (admin) |
+| DELETE | `/api/sessions/:id` | Delete lesson (admin) |
 | POST | `/api/enrollments` | Enroll in a course |
-| GET | `/api/enrollments/my` | Get my enrollments |
-| GET | `/api/enrollments` | Get all enrollments (admin) |
+| GET | `/api/enrollments/my` | My enrollments |
+| GET | `/api/enrollments` | All enrollments (admin) |
+| POST | `/api/progress/:sessionId/complete` | Mark lesson done |
+| GET | `/api/progress/:sessionId` | Lesson progress |
+| GET | `/api/progress/course/:courseId` | Course progress |
 
-### Progress
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/progress/:sessionId/complete` | Mark session complete |
-| GET | `/api/progress/:sessionId` | Get session progress |
-| GET | `/api/progress/course/:courseId` | Get course progress |
-
-### Categories
+### Categories, profile, admin
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/categories` | Get all categories |
-| GET | `/api/categories/:slug` | Get category by slug |
-| POST | `/api/categories` | Create category (admin) |
-| PUT | `/api/categories/:id` | Update category (admin) |
-| DELETE | `/api/categories/:id` | Delete category (admin) |
-
-### Profile
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/profile` | Get profile |
+| GET | `/api/categories` | All categories |
+| GET | `/api/categories/:slug` | One category |
+| POST | `/api/categories` | Create (admin) |
+| PUT | `/api/categories/:id` | Update (admin) |
+| DELETE | `/api/categories/:id` | Delete (admin) |
+| GET | `/api/profile` | My profile |
 | PUT | `/api/profile` | Update profile |
 | PUT | `/api/profile/change-password` | Change password |
+| GET | `/api/admin/dashboard` | Stats (admin) |
+| GET | `/api/admin/students` | Student list (admin) |
+| GET | `/health` | Liveness check |
 
-### Admin
+Send the token like this:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/admin/dashboard` | Get dashboard stats |
-| GET | `/api/admin/students` | Get all students |
-
-### Health Check
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Server health check |
-
----
-
-## Build for Production
-
-```bash
-npm run build
-```
-
-This compiles TypeScript to `dist/` directory.
-
-### Start Production Server
-
-```bash
-npm run start
+```http
+Authorization: Bearer YOUR_JWT_HERE
 ```
 
 ---
 
-## PM2 Deployment
+## npm scripts
 
-### Step 1: Install PM2
+| Command | When to use it |
+|---------|----------------|
+| `npm run dev` | Daily coding (auto-restart with `tsx watch`) |
+| `npm run build` | Compile TypeScript → `dist/` |
+| `npm run start` | Run the compiled app (`node dist/index.js`) |
+| `npm run db:push` | Create / update tables from the schema |
+| `npm run db:studio` | Visual browser for the database |
+| `npm run lint` | Check code style |
+
+The Docker image runs the same command as `npm run start`.
+
+---
+
+## Production notes (optional)
+
+On a server you can still use PM2:
 
 ```bash
-sudo npm install -g pm2
-```
-
-### Step 2: Build the Project
-
-```bash
-cd lms-api
 npm run build
-```
-
-This compiles TypeScript and generates the `dist/` directory.
-
-### Step 3: Start with PM2
-
-```bash
 pm2 start dist/index.js --name "lms-api"
 ```
 
-### Step 4: Verify It's Running
-
-```bash
-pm2 status
-```
-
-You should see `lms-api` with status `online`.
-
-### Step 5: Save Process List
-
-```bash
-pm2 save
-```
-
-This saves the current process list so it can be restored on reboot.
-
-### Step 6: Setup Auto-Start on Reboot
-
-```bash
-pm2 startup
-```
-
-This generates a command — copy and run it as instructed. It ensures PM2 starts automatically when the server reboots.
-
-### Useful PM2 Commands
-
-| Command | Description |
-|---------|-------------|
-| `pm2 status` | View running processes |
-| `pm2 logs lms-api` | View logs |
-| `pm2 restart lms-api` | Restart process |
-| `pm2 stop lms-api` | Stop process |
-| `pm2 delete lms-api` | Delete process |
-| `pm2 monit` | Monitor CPU and memory |
-
----
-
-## AWS Deployment
-
-### Setup on EC2
-
-```bash
-# Install Node.js
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-
-# Install PostgreSQL
-sudo apt install -y postgresql postgresql-contrib
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
-```
-
-### Create Database
-
-```bash
-sudo -u postgres psql
-```
-
-```sql
-CREATE DATABASE lms_db;
-CREATE USER lms_user WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE lms_db TO lms_user;
-\q
-```
-
-### Deploy
-
-```bash
-# Clone or upload project
-cd ~/lms/lms-api
-
-# Install and build
-npm install
-npm run build
-
-# Create .env
-cat > .env << 'EOF'
-DATABASE_URL=postgresql://lms_user:your_secure_password@localhost:5432/lms_db
-JWT_SECRET=your-production-jwt-secret
-JWT_EXPIRES_IN=7d
-PORT=5000
-CORS_ORIGIN=http://<your-ec2-public-ip>:3000
-EOF
-
-# Push schema
-npm run db:push
-
-# Start with PM2
-pm2 start dist/index.js --name "lms-api"
-pm2 save
-```
-
----
-
-## Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server with tsx watch |
-| `npm run build` | Compile TypeScript |
-| `npm run start` | Start production server |
-| `npm run lint` | Run ESLint |
-| `npm run db:push` | Push schema to database |
-| `npm run db:generate` | Generate migrations |
-| `npm run db:migrate` | Run migrations |
-| `npm run db:studio` | Open Drizzle Studio |
+For class work, **Docker** is the path to practise. See [dockerfile-demo.md](./dockerfile-demo.md).

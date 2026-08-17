@@ -1,0 +1,36 @@
+# Dependencies — Docker will install these inside the image
+node_modules
+
+# Build output — Docker will compile TypeScript again during the image build
+dist
+
+# Git history is not needed inside the image
+.git
+.gitignore
+
+# Secrets must never be copied into an image
+.env
+.env.*
+!.env.example
+
+# Logs and OS junk
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editor / IDE folders
+.vscode
+.idea
+*.swp
+
+# Student docs — useful on GitHub, not needed to run the API
+*.md
+.dockerignore
+
+# Test and coverage files (if added later)
+coverage
+.nyc_output
+
+# Drizzle Studio / generated artefacts not required at runtime
+drizzle
